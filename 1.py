@@ -2,8 +2,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.vectorstores import Chroma
-# import arabic_reshaper
-# from bidi.algorithm import get_display
+from langchain_community.llms import LlamaCpp
 
 loader = PyPDFLoader("Walid's Data.pdf")
 pages = loader.load_and_split()
@@ -15,11 +14,39 @@ vectorstore = Chroma.from_documents(documents=all_splits, embedding=GPT4AllEmbed
 
 question = "who is Walid?"
 docs = vectorstore.similarity_search(question)
-print(docs[0])
 
-from langchain_community.llms import GPT4All
+from langchain_community.llms import LlamaCpp
+n_gpu_layers = 1  # Metal set to 1 is enough.
+n_batch = 512  # Should be between 1 and n_ctx, consider the amount of RAM of your Apple Silicon Chip.
 
-gpt4all = GPT4All(
-    model="C:/Users/User/.cache/gpt4all/Models/FreedomIntelligence-AceGPT-7B-chat.Q5_K_S.gguf",
-    max_tokens=2048,
+# Make sure the model path is correct for your system!
+llm = LlamaCpp(
+    model_path="mistral-7b-instruct-v0.2.Q6_K.gguf",
+    n_gpu_layers=n_gpu_layers,
+    n_batch=n_batch,
+    n_ctx=2048,
+    f16_kv=True,  # MUST set to True, otherwise you will run into problem after a couple of calls
+    verbose=True,
 )
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+
+# Prompt
+prompt = PromptTemplate.from_template(
+    "Summarize the main themes in these retrieved docs: {docs}"
+)
+
+
+# Chain
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+chain = {"docs": format_docs} | prompt | llm | StrOutputParser()
+
+response = chain.invoke(docs)  # Execute the chain
+print(response)                 # Print the LLM's response (string)
+
+
+
